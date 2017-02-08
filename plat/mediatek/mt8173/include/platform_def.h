@@ -232,18 +232,18 @@
  * 0x130000 +-------------------+
  */
 /* TF txet, ro, rw, xlat table, coherent memory ... etc.
- * Size: release: 128KB, debug: 128KB
+ * Size: release: 128KB, debug: 160KB
  */
 #define TZRAM_BASE		(0x100000)
 #if DEBUG
-#define TZRAM_SIZE		(0x20000)
+#define TZRAM_SIZE		(0x28000)
 #else
 #define TZRAM_SIZE		(0x20000)
 #endif
 
-/* Reserved: 64KB */
+/* Reserved: 32KB */
 #define TZRAM2_BASE		(TZRAM_BASE + TZRAM_SIZE)
-#define TZRAM2_SIZE		(0x10000)
+#define TZRAM2_SIZE		(0x8000)
 
 /*******************************************************************************
  * BL31 specific defines.
