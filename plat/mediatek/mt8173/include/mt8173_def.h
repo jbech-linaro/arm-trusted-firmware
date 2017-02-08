@@ -76,7 +76,7 @@
 #define MT8173_UART2_BASE	(IO_PHYS + 0x01004000)
 #define MT8173_UART3_BASE	(IO_PHYS + 0x01005000)
 
-#define MT8173_BAUDRATE		(115200)
+#define MT8173_BAUDRATE		(921600)
 #define MT8173_UART_CLOCK	(26000000)
 
 /*******************************************************************************
