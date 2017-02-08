@@ -31,6 +31,7 @@
 #include <bl_common.h>
 #include <common_def.h>
 #include <console.h>
+#include <context_mgmt.h>
 #include <debug.h>
 #include <generic_delay_timer.h>
 #include <mcucfg.h>
@@ -38,6 +39,7 @@
 #include <mtcmos.h>
 #include <plat_arm.h>
 #include <plat_private.h>
+#include <mtk_plat_common.h>
 #include <platform.h>
 #include <spm.h>
 
@@ -186,5 +188,121 @@ void bl31_plat_arch_setup(void)
 			       BL31_RO_LIMIT,
 			       BL_COHERENT_RAM_BASE,
 			       BL_COHERENT_RAM_END);
+}
+
+static entry_point_info_t *bl31_plat_get_next_kernel64_ep_info(void)
+{
+	entry_point_info_t *next_image_info;
+	unsigned long el_status;
+	unsigned int mode;
+
+	el_status = 0;
+	mode = 0;
+
+	/* Kernel image is always non-secured */
+	next_image_info = &bl33_ep_info;
+
+	/* Figure out what mode we enter the non-secure world in */
+	el_status = read_id_aa64pfr0_el1() >> ID_AA64PFR0_EL2_SHIFT;
+	el_status &= ID_AA64PFR0_ELX_MASK;
+
+	if (el_status) {
+			INFO("Kernel_EL2\n");
+		mode = MODE_EL2;
+	} else{
+		INFO("Kernel_EL1\n");
+		mode = MODE_EL1;
+	}
+
+	INFO("Kernel is 64Bit\n");
+	next_image_info->spsr =
+		SPSR_64(mode, MODE_SP_ELX, DISABLE_ALL_EXCEPTIONS);
+	next_image_info->pc = get_kernel_info_pc();
+	next_image_info->args.arg0 = get_kernel_info_r0();
+	next_image_info->args.arg1 = get_kernel_info_r1();
+
+	INFO("pc=0x%lx, r0=0x%lx, r1=0x%lx\n",
+				 next_image_info->pc,
+				 next_image_info->args.arg0,
+				 next_image_info->args.arg1);
+
+
+	SET_SECURITY_STATE(next_image_info->h.attr, NON_SECURE);
+
+	/* None of the images on this platform can have 0x0 as the entrypoint */
+	if (next_image_info->pc)
+		return next_image_info;
+	else
+		return NULL;
+}
+
+static entry_point_info_t *bl31_plat_get_next_kernel32_ep_info(void)
+{
+	entry_point_info_t *next_image_info;
+	unsigned int mode;
+
+	mode = 0;
+
+	/* Kernel image is always non-secured */
+	next_image_info = &bl33_ep_info;
+
+	/* Figure out what mode we enter the non-secure world in */
+	mode = MODE32_hyp;
+	/*
+	* TODO: Consider the possibility of specifying the SPSR in
+	* the FIP ToC and allowing the platform to have a say as
+	* well.
+	*/
+
+	INFO("Kernel is 32Bit\n");
+	next_image_info->spsr =
+		SPSR_MODE32(mode, SPSR_T_ARM, SPSR_E_LITTLE,
+		(DAIF_FIQ_BIT | DAIF_IRQ_BIT | DAIF_ABT_BIT));
+	next_image_info->pc = get_kernel_info_pc();
+	next_image_info->args.arg0 = get_kernel_info_r0();
+	next_image_info->args.arg1 = get_kernel_info_r1();
+	next_image_info->args.arg2 = get_kernel_info_r2();
+
+	INFO("pc=0x%lx, r0=0x%lx, r1=0x%lx, r2=0x%lx\n",
+				 next_image_info->pc,
+				 next_image_info->args.arg0,
+				 next_image_info->args.arg1,
+				 next_image_info->args.arg2);
+
+
+	SET_SECURITY_STATE(next_image_info->h.attr, NON_SECURE);
+
+	/* None of the images on this platform can have 0x0 as the entrypoint */
+	if (next_image_info->pc)
+		return next_image_info;
+	else
+		return NULL;
+}
+
+void bl31_prepare_kernel_entry(uint64_t k32_64)
+{
+	entry_point_info_t *next_image_info;
+	uint32_t image_type;
+
+	/* Determine which image to execute next */
+	/* image_type = bl31_get_next_image_type(); */
+	image_type = NON_SECURE;
+
+	/* Program EL3 registers to enable entry into the next EL */
+	if (0 == k32_64)
+		next_image_info = bl31_plat_get_next_kernel32_ep_info();
+	else
+		next_image_info = bl31_plat_get_next_kernel64_ep_info();
+
+	assert(next_image_info);
+	assert(image_type == GET_SECURITY_STATE(next_image_info->h.attr));
+
+	INFO("BL3-1: Preparing for EL3 exit to %s world, Kernel\n",
+		(image_type == SECURE) ? "secure" : "normal");
+	INFO("BL3-1: Next image address = 0x%llx\n",
+		(unsigned long long) next_image_info->pc);
+	INFO("BL3-1: Next image spsr = 0x%x\n", next_image_info->spsr);
+	cm_init_context(read_mpidr_el1(), next_image_info);
+	cm_prepare_el3_exit(image_type);
 }
 
